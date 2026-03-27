@@ -119,20 +119,17 @@ final class ExecHandler: ChannelDuplexHandler {
         
         let (ours, theirs) = GlueHandler.matchedPair()
         
-        // Ok, great, we've sorted stdout and stdin. For stderr we need a different strategy: we just park a thread for this.
+        // For stderr we park a dedicated thread that blocks on readDataToEndOfFile().
+        // Using a readabilityHandler + readToEnd() is unreliable on Linux: readToEnd()
+        // throws when called from within a readability callback, which would close the
+        // SSH channel prematurely and send a ChannelFailureEvent to the client.
         let stderrHandle = handler.stderrPipe.fileHandleForReading
-        stderrHandle.readabilityHandler = { stderrHandle in
-            do {
-                guard let data = try stderrHandle.readToEnd() else {
-                    stderrHandle.readabilityHandler = nil
-                    return
-                }
-                var buffer = channel.allocator.buffer(capacity: data.count)
-                buffer.writeContiguousBytes(data)
-                channel.writeAndFlush(SSHChannelData(type: .stdErr, data: .byteBuffer(buffer)), promise: nil)
-            } catch {
-                channel.close(promise: nil)
-            }
+        DispatchQueue.global().async {
+            let data = stderrHandle.readDataToEndOfFile()
+            guard !data.isEmpty else { return }
+            var buffer = channel.allocator.buffer(capacity: data.count)
+            buffer.writeContiguousBytes(data)
+            channel.writeAndFlush(SSHChannelData(type: .stdErr, data: .byteBuffer(buffer)), promise: nil)
         }
         
         channel.pipeline.addHandler(ours).flatMap {
