@@ -127,9 +127,14 @@ final class ExecHandler: ChannelDuplexHandler {
         DispatchQueue.global().async {
             let data = stderrHandle.readDataToEndOfFile()
             guard !data.isEmpty else { return }
-            var buffer = channel.allocator.buffer(capacity: data.count)
-            buffer.writeContiguousBytes(data)
-            channel.writeAndFlush(SSHChannelData(type: .stdErr, data: .byteBuffer(buffer)), promise: nil)
+            channel.eventLoop.execute {
+                var buffer = channel.allocator.buffer(capacity: data.count)
+                buffer.writeContiguousBytes(data)
+                channel.writeAndFlush(
+                    SSHChannelData(type: .stdErr, data: .byteBuffer(buffer)),
+                    promise: nil
+                )
+            }
         }
 
         // Tracks whether SSH_MSG_CHANNEL_SUCCESS has been sent for this exec request.
