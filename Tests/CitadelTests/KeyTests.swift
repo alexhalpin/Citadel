@@ -346,6 +346,6 @@ final class KeyTests: XCTestCase {
             sshEd25519: keyContent,
             decryptionKey: Data(passphrase.utf8)
         )
-        XCTAssertNotNil(privateKey)
+        XCTAssertFalse(privateKey.publicKey.rawRepresentation.isEmpty)
     }
 }
